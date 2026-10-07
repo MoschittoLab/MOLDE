@@ -1207,11 +1207,6 @@ def _drain_with_pool(fn, items, *args):
 
         return collected
 
-
-def Deprotection(smile1): #Placeholder
-    return [smile1]
-
-
 class UgiReaction(QThread):
     finished = pyqtSignal()
     def run(self):
@@ -2007,14 +2002,6 @@ class FiltrationWindow(QWidget):
         self.filtered_df = None
         self.manually_adjusted = False   
         self._applying_preset = False    
-
-    def _get_current_filtered_df(self):
-        filtered_df = self.df.copy()
-        for item in self.filters:
-            min_value = self.spin_box[item]["min_spin_box"].value()
-            max_value = self.spin_box[item]["max_spin_box"].value()
-            filtered_df = filtered_df[(filtered_df[item] >= min_value) & (filtered_df[item] <= max_value)]
-        return filtered_df
 
     def setFilterValues(self): 
         global filters_dictionary
