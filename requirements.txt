@@ -1,0 +1,4 @@
+rdkit==2025.9.1
+pandas==2.3.3
+scikit-learn
+matplotlib

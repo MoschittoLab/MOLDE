@@ -637,67 +637,68 @@ reactions_dictionary = {
 
 # --------------- Substructure Dictionary ---------------------
 substructure_dictionary = {
-    "Contains an Aromatic Ring":  "[a;r]",
-    "Contains Aliphatic Ring":    "[C;R;!a]",
-    "Contains Terminal Alkyne":   "[C;H1]#[C]",
-    "Contains Terminal Alkene":   "[C;H2]=[C]",
-    "Contains Internal Alkyne":   "[C;H0]#[C;H0]",
-    "Contains Internal Alkene":   "[C;H0,H1]=[C;H0,H1]",
-    "Contains Fluorine":          "[#6][#9]",
-    "Contains Chlorine":          "[#6][#17]",
-    "Contains Bromine":           "[#6][#35]",
-    "Contains Iodine":            "[#6][#53]",
-    "Contains Primary Amine":     "[NX3;H2;!$(NC=O)]",
-    "Contains Secondary Amine":   "[NX3;H1;!$(NC=O)]",
-    "Contains Tertiary Amine":    "[NX3;H0;!$(NC=O)]([#6])([#6])[#6]",
-    "Contains Amide":             "[NX3][CX3](=O)",
-    "Contains Nitro Group":       "[$([NX3](=O)=O),$([NX3+](=O)[O-])]",
-    "Contains Nitrile":           "[CX2]#[NX1]",
-    "Contains Isocyanate":        "[NX2]=[CX2]=O",
-    "Contains Boronate":          "[BX3]([OX2])[OX2]",
-    "Contains Phosphate":         "[PX4](=O)([OX2])([OX2])[OX2]",
-    "Contains Thiol":             "[SX2H1]",
-    "Contains Alcohol":           "[OX2H1]",
-    "Contains Aldehyde":          "[CX3H1](=O)",
-    "Contains Ketone":            "[CX3](=O)([#6])[#6]",
-    "Contains Carboxylic Acid":   "[CX3](=O)[OX2H1]",
-    "Contains Sulfonate":         "[SX4](=O)(=O)[OX2]",
-    "Contains Sulfinate":         "[SX3](=O)[OX2]",
-    "Contains Sulfoxide":         "[SX3](=O)([#6])[#6]",
-    "Contains Sulfone":           "[SX4](=O)(=O)([#6])[#6]",
-    "Contains Sulfonyl Chloride": "[SX4](=O)(=O)Cl",
-    "Contains Sulfonyl Fluoride": "[SX4](=O)(=O)F",
-    "Contains Vinyl Sulfone":     "[CX3H2]=[CX3H][SX4](=O)(=O)",
-    "Contains Acrylamide":        "[CX3H2]=[CX3H][CX3](=O)[NX3]",
-    "Contains Epoxide":           "[O;r3]1[C;r3][C;r3]1",
-    "Contains Aziridine":         "[N;r3]1[C;r3][C;r3]1",
-    "Contains Cyclopropane":      "C1CC1",
-    "Contains Cyclopentane":      "C1CCCC1",
-    "Contains Cyclohexane":       "C1CCCCC1",
-    "Contains Cycloheptane":      "C1CCCCCC1",
-    "Contains Piperidine":        "C1CCNCC1",
-    "Contains Piperazine":        "C1CNCCN1",
-    "Contains Pyrrolidine":       "C1CCNC1",
-    "Contains Morpholine":        "C1COCCN1",
-    "Contains Pyridine Ring":     "n1ccccc1",
-    "Contains Pyrimidine Ring":   "c1cncnc1",
-    "Contains Pyrrole Ring":      "[nH]1cccc1",
-    "Contains Imidazole Ring":    "c1cnc[nH]1",
-    "Contains Thiazole Ring":     "c1ncsc1",
-    "Contains Ester":             "[CX3](=O)[OX2][#6]",
-    "Contains Ether":             "[#6][OX2][#6]",
-    "Contains Phenol":            "[c][OX2H1]",
-    "Contains Aniline":           "[c][NX3;H1,H2]",
-    "Contains Urea":              "[NX3][CX3](=O)[NX3]",
-    "Contains Carbamate":         "[NX3][CX3](=O)[OX2]",
-    "Contains Sulfonamide":       "[SX4](=O)(=O)[NX3]",
-    "Contains Azide":             "[$([NX1-]=[NX2+]=[NX1]),$([NX1]#[NX2+][NX1-])]",
-    "Contains Aryl Halide":       "[c][F,Cl,Br,I]",
-    "Contains Alkyl Halide":      "[C;!a][Cl,Br,I]",
-    "Contains Benzene Ring":      "c1ccccc1",
-    "Contains Trifluoromethyl":   "[CX4](F)(F)F",
-    "Contains Thiophene Ring":    "c1ccsc1",
-    "Contains Furan Ring":        "c1ccoc1",
+    "Contains an Aromatic Ring":        "[a;r]",
+    "Contains Aliphatic Ring":          "[C;R;!a]",
+    "Contains Astatine (Fragment)":     "[#85]",
+    "Contains Terminal Alkyne":         "[C;H1]#[C]",
+    "Contains Terminal Alkene":         "[C;H2]=[C]",
+    "Contains Internal Alkyne":         "[C;H0]#[C;H0]",
+    "Contains Internal Alkene":         "[C;H0,H1]=[C;H0,H1]",
+    "Contains Fluorine":                "[#6][#9]",
+    "Contains Chlorine":                "[#6][#17]",
+    "Contains Bromine":                 "[#6][#35]",
+    "Contains Iodine":                  "[#6][#53]",
+    "Contains Primary Amine":           "[NX3;H2;!$(NC=O)]",
+    "Contains Secondary Amine":         "[NX3;H1;!$(NC=O)]",
+    "Contains Tertiary Amine":          "[NX3;H0;!$(NC=O)]([#6])([#6])[#6]",
+    "Contains Amide":                   "[NX3][CX3](=O)",
+    "Contains Nitro Group":             "[$([NX3](=O)=O),$([NX3+](=O)[O-])]",
+    "Contains Nitrile":                 "[CX2]#[NX1]",
+    "Contains Isocyanate":              "[NX2]=[CX2]=O",
+    "Contains Boronate":                "[BX3]([OX2])[OX2]",
+    "Contains Phosphate":               "[PX4](=O)([OX2])([OX2])[OX2]",
+    "Contains Thiol":                   "[SX2H1]",
+    "Contains Alcohol":                 "[OX2H1]",
+    "Contains Aldehyde":                "[CX3H1](=O)",
+    "Contains Ketone":                  "[CX3](=O)([#6])[#6]",
+    "Contains Carboxylic Acid":         "[CX3](=O)[OX2H1]",
+    "Contains Sulfonate":               "[SX4](=O)(=O)[OX2]",
+    "Contains Sulfinate":               "[SX3](=O)[OX2]",
+    "Contains Sulfoxide":               "[SX3](=O)([#6])[#6]",
+    "Contains Sulfone":                 "[SX4](=O)(=O)([#6])[#6]",
+    "Contains Sulfonyl Chloride":       "[SX4](=O)(=O)Cl",
+    "Contains Sulfonyl Fluoride":       "[SX4](=O)(=O)F",
+    "Contains Vinyl Sulfone":           "[CX3H2]=[CX3H][SX4](=O)(=O)",
+    "Contains Acrylamide":              "[CX3H2]=[CX3H][CX3](=O)[NX3]",
+    "Contains Epoxide":                 "[O;r3]1[C;r3][C;r3]1",
+    "Contains Aziridine":               "[N;r3]1[C;r3][C;r3]1",
+    "Contains Cyclopropane":            "C1CC1",
+    "Contains Cyclopentane":            "C1CCCC1",
+    "Contains Cyclohexane":             "C1CCCCC1",
+    "Contains Cycloheptane":            "C1CCCCCC1",
+    "Contains Piperidine":              "C1CCNCC1",
+    "Contains Piperazine":              "C1CNCCN1",
+    "Contains Pyrrolidine":             "C1CCNC1",
+    "Contains Morpholine":              "C1COCCN1",
+    "Contains Pyridine Ring":           "n1ccccc1",
+    "Contains Pyrimidine Ring":         "c1cncnc1",
+    "Contains Pyrrole Ring":            "[nH]1cccc1",
+    "Contains Imidazole Ring":          "c1cnc[nH]1",
+    "Contains Thiazole Ring":           "c1ncsc1",
+    "Contains Ester":                   "[CX3](=O)[OX2][#6]",
+    "Contains Ether":                   "[#6][OX2][#6]",
+    "Contains Phenol":                  "[c][OX2H1]",
+    "Contains Aniline":                 "[c][NX3;H1,H2]",
+    "Contains Urea":                    "[NX3][CX3](=O)[NX3]",
+    "Contains Carbamate":               "[NX3][CX3](=O)[OX2]",
+    "Contains Sulfonamide":             "[SX4](=O)(=O)[NX3]",
+    "Contains Azide":                   "[$([NX1-]=[NX2+]=[NX1]),$([NX1]#[NX2+][NX1-])]",
+    "Contains Aryl Halide":             "[c][F,Cl,Br,I]",
+    "Contains Alkyl Halide":            "[C;!a][Cl,Br,I]",
+    "Contains Benzene Ring":            "c1ccccc1",
+    "Contains Trifluoromethyl":         "[CX4](F)(F)F",
+    "Contains Thiophene Ring":          "c1ccsc1",
+    "Contains Furan Ring":              "c1ccoc1",
 }
 
 # --------------- Descriptor Filters Dictionary ---------------------
@@ -1892,7 +1893,7 @@ class FiltrationWindow(QWidget):
        
         self.original_ranges = {item: {"min": roundDown(self.df[item].min(), 2), "max": roundUp(self.df[item].max(), 2)} for item in self.filters}
         self.setWindowTitle("Library Filtration")
-        self.resize(800, 420)
+        self.resize(800, 420)  #TODO evaluate changing values or allow for self resizing?
         self.selected_filters = []
 
         self.active_filter_description = ""
@@ -1935,7 +1936,7 @@ class FiltrationWindow(QWidget):
         self.spin_box = {}
         row = 0
         spin_box_layout.addWidget(QLabel("Parameter", alignment=Qt.AlignmentFlag.AlignCenter), row, 0)
-        spin_box_layout.addWidget(QLabel("Current Library Range", alignment=Qt.AlignmentFlag.AlignCenter), row, 1)
+        spin_box_layout.addWidget(QLabel("Original Library Range", alignment=Qt.AlignmentFlag.AlignCenter), row, 1) #Original vs prior vs current (updates text number labels after exitting to main menu and coming back to filter menu)
         spin_box_layout.addWidget(QLabel("Min", alignment=Qt.AlignmentFlag.AlignCenter), row, 2)
         spin_box_layout.addWidget(QLabel("Max", alignment=Qt.AlignmentFlag.AlignCenter), row, 3)
         row = row + 1
@@ -1968,7 +1969,6 @@ class FiltrationWindow(QWidget):
             spin_box_layout.addWidget(self.spin_box[item]["min_spin_box"], row, 2)
             spin_box_layout.addWidget(self.spin_box[item]["max_spin_box"], row, 3)
             row=row+1
-        self._refresh_current_library_ranges()
         mainFiltrationLayout.addWidget(self.FiltrationDialBox)
         self.filterDfBtn = QPushButton("Apply Above Filters to Library")
         self.filterDfBtn.clicked.connect(self.start_filtration)
@@ -2015,15 +2015,6 @@ class FiltrationWindow(QWidget):
             max_value = self.spin_box[item]["max_spin_box"].value()
             filtered_df = filtered_df[(filtered_df[item] >= min_value) & (filtered_df[item] <= max_value)]
         return filtered_df
-
-    def _refresh_current_library_ranges(self):
-        for item in self.filters:
-            min_value = self.original_ranges[item]["min"]
-            max_value = self.original_ranges[item]["max"]
-            if item in self.int_filters:
-                self.spin_box[item]["range_label"].setText(f"{int(min_value)} - {int(max_value)}")
-            else:
-                self.spin_box[item]["range_label"].setText(f"{min_value:.2f} - {max_value:.2f}")
 
     def setFilterValues(self): 
         global filters_dictionary
@@ -2079,7 +2070,6 @@ class FiltrationWindow(QWidget):
             self.spin_box[item]["min_spin_box"].setMaximum(max_value)
             self.spin_box[item]["max_value"] = max_value
             self.spin_box[item]["max_spin_box"].setMinimum(min_value)
-        self._refresh_current_library_ranges()
 
     def describeFilter(self, s):
         global filters_dictionary
@@ -3139,11 +3129,14 @@ class Main(QWidget):
         nameBoxLayout.addWidget(self.libraryNameBox, 0, 1)
         nameBoxLayout.addWidget(self.libraryNameBtn, 0, 2)
 
+        topRightLayout = QGridLayout()
+        topRightLayout.addWidget(self.importMoleculesGroupBox, 0, 0)
+        topRightLayout.addWidget(self.runGroupBox, 1, 0)
+
         topLayout = QGridLayout()
-        topLayout.addWidget(self.importMoleculesGroupBox, 0, 0)
+        topLayout.addLayout(topRightLayout, 0, 0)
         topLayout.addWidget(self.selectReactionGroupBox, 0, 1)
-        topLayout.addWidget(self.runGroupBox, 0, 2)
-        topLayout.addWidget(self.visualizationGroupBox, 0, 3)
+        topLayout.addWidget(self.visualizationGroupBox, 0, 2)
         for box in (self.importMoleculesGroupBox, self.selectReactionGroupBox,
                     self.runGroupBox, self.visualizationGroupBox):
             box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -3235,7 +3228,7 @@ class Main(QWidget):
         self.splitDatabaseBtn.clicked.connect(self.splitDatabase)
         self.batchSizeSpinBox = QSpinBox()
         self.batchSizeSpinBox.setRange(1, 1000000)
-        self.batchSizeSpinBox.setValue(3500)
+        self.batchSizeSpinBox.setValue(5000)
         self.mergeDatabaseBtn = QPushButton("Merge Databases")
         self.mergeDatabaseBtn.clicked.connect(self.mergeDatabase)
 
@@ -3630,7 +3623,7 @@ class Main(QWidget):
         self.abbaComboBox.addItems(["Select Pairing Mode", "Starting Material is A", "Starting Material is B", "Reactant Pool"])
         self.abbaComboBox.currentTextChanged.connect(self.abbaModeChanged)
         self.AB_textbox = QLabel("\n")
-        self.retainStartingCheckBox = QCheckBox("Retain Starting Reactants?")
+        self.retainStartingCheckBox = QCheckBox("Retain Starting Materials and Reactants?")
         self.setReactionBtn = QPushButton("Set Reaction Choice")
         self.setReactionBtn.clicked.connect(self.setReaction)
 
@@ -3650,8 +3643,15 @@ class Main(QWidget):
             return
         if text == "Reactant Pool":
             self.AB_textbox.setText("Reactant Pool Mode\nNo A/B Roles Assigned")
+            self.setReactionBtn.setDisabled(False)
+            return
         elif reactions_dictionary[reaction]["type"] == "two":
-            self.AB_textbox.setText("A: "+reactions_dictionary[reaction]["A"]+"\nB: "+reactions_dictionary[reaction]["B"])
+            if text == "Select Pairing Mode":
+                self.AB_textbox.setText("\n")
+                self.setReactionBtn.setDisabled(True)
+            else:
+                self.AB_textbox.setText("A: "+reactions_dictionary[reaction]["A"]+"\nB: "+reactions_dictionary[reaction]["B"])
+                self.setReactionBtn.setDisabled(False)
 
     def createMenuBar(self):
         self.menuBar = QMenuBar(self)
@@ -3665,9 +3665,9 @@ class Main(QWidget):
 
         execBtn = QPushButton('Run Reaction')
         execBtn.clicked.connect(self.executeReaction)
-        execBtn.setMinimumHeight(80)
+        #execBtn.setMinimumHeight(80)  TODO permanently erase?
         runFont = execBtn.font()
-        runFont.setPointSize(runFont.pointSize() + 4)
+        #runFont.setPointSize(runFont.pointSize() + 4)
         runFont.setBold(True)
         execBtn.setFont(runFont)
 

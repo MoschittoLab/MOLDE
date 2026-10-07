@@ -1,0 +1,62 @@
+{
+    "app-id": "org.moschittolab.MOLDE",
+    "runtime": "org.kde.Platform",
+    "runtime-version": "6.9",
+    "sdk": "org.kde.Sdk",
+    "base": "com.riverbankcomputing.PyQt.BaseApp",
+    "base-version": "6.9",
+    "command": "runner.sh",
+    "finish-args": [
+        "--share=ipc",
+        "--socket=fallback-x11",
+        "--socket=wayland",
+        "--device=dri",
+        "--system-talk-name=org.freedesktop.DBus",
+        "--filesystem=host",
+        "--filesystem=home",
+        "--system-talk-name=org.freedesktop.UDisks2"
+    ],
+    "modules": [
+        {
+            "name": "pip-install",
+            "buildsystem": "simple",
+            "build-options": {
+                "build-args": [
+                    "--share=network"
+                ]
+            },
+            "build-commands": [
+                "pip3 install -r requirements.txt --exists-action=i --prefix=${FLATPAK_DEST}"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "path": "requirements.txt"
+                }
+            ]
+        },
+        {
+            "name": "runner",
+            "buildsystem": "simple",
+            "build-commands": [
+                "install -D runner.sh /app/bin/runner.sh",
+                "install -D MOLDE.py /app/bin/MOLDE.py",
+                "install -D fpscores.pkl /app/bin/sascorer_bundle/fpscores.pkl"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "path": "MOLDE.py"
+                },
+                {
+                    "type": "file",
+                    "path": "runner.sh"
+                },
+                {
+                    "type": "file",
+                    "path": "fpscores.pkl"
+                }
+            ]
+        }
+    ]
+}
