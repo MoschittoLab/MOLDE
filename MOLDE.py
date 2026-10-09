@@ -348,7 +348,7 @@ reactions_dictionary = {
         "B": "C-N, C-O, or C-S"
     },
     "Buchwald-Hartwig Amination": {
-        "smarts": {#"[#7:1].[#17,#35,#53]([c:2]) >> [#7:1]-[c:2]",
+        "smarts": {#"[#7h:1].[#17,#35,#53]([c:2]) >> [#7:1]-[c:2]",
             "1": "[#7h:1]",
             "2": "[#17,#35,#53]([c:2])",
             "3": "[#7:1]-[c:2]"
@@ -358,8 +358,8 @@ reactions_dictionary = {
         "B": "Aryl Halide"
     },
     "Buchwald-Hartwig C-O": {
-            "smarts": {#"[#8:1].[#17,#35,#53]([c:2]) >> [#8:1]-[c:2]",
-                "1": "[#8:1]",
+            "smarts": {#"[#h:1].[#17,#35,#53]([c:2]) >> [#8:1]-[c:2]",
+                "1": "[#8h:1]",
                 "2": "[#17,#35,#53]([c:2])",
                 "3": "[#8:1]-[c:2]"
             },
@@ -369,13 +369,13 @@ reactions_dictionary = {
         },
     "Reductive Amination": {
         "smarts": {
-            "1": "[C;X3;H0,H1:1](=[O])([#6])",
-            "2": "[N;H1,H2:2]",
+            "1": "[C;X3;H0,H1;!$(C(=O)[N,O,S]):1]=[O]",
+            "2": "[N;H1,H2;!$(N[C,S,P]=[O,S,N]):2]",
             "3": "[C:1]-[N:2]"
         },
         "type": "two",
         "A": "aldehyde or ketone",
-        "B": "amine"
+        "B": "primary or secondary amine"
     },
     "Sulfonamide formation": {
         "smarts":{
@@ -480,14 +480,14 @@ reactions_dictionary = {
         "B": "Alkyl Halide"
     },
     "Ni/Photoredox Decarboxylative Cross-Coupling": {
-        "smarts": {#"[#6:1]-C(=O)(O).Cl([#6:2])>>[#6:1]-[#6:2]",
-            "1": "[#6:1]-C(=O)(O)",
-            "2": "Cl([#6:2])",
-            "3": "[#6:1]-[#6:2]"
+        "smarts": {
+            "1": "[#6:1]-C(=O)[O;H1]",
+            "2": "[c:2]-Cl",
+            "3": "[#6:1]-[c:2]"
         },
         "type": "two",
-        "A": "-COOH",
-        "B": "Aryl Cl"
+        "A": "Carboxylic acid",
+        "B": "Aryl chloride"
     },
     "Fluorination": {
         "smarts": "[#6;H1,H2,H3:1] >> [#6:1]-F",
@@ -636,6 +636,10 @@ reactions_dictionary = {
 }
 
 # --------------- Substructure Dictionary ---------------------
+presence_only_substructures = {
+    "Contains an Aromatic Ring",
+    "Contains an Aliphatic Ring",
+}
 substructure_dictionary = {
     "Contains an Aromatic Ring":        "[a;r]",
     "Contains Aliphatic Ring":          "[C;R;!a]",
@@ -1737,17 +1741,77 @@ class FilterWorker(QObject):
         except Exception as exc:
             self.error.emit(f"Filtration failed: {exc}")
 
+def count_substructure_matches(mol, pattern):
+    if mol is None or pattern is None:
+        return 0
+
+    return len(
+        mol.GetSubstructMatches(
+            pattern,
+            uniquify=True
+        )
+    )
+
+
+def evaluate_count_condition(match_count, count_mode, target_count):
+    if count_mode == "any":
+        return match_count > 0
+
+    if count_mode == "exact":
+        return match_count == target_count
+
+    if count_mode == "at_least":
+        return match_count >= target_count
+
+    if count_mode == "at_most":
+        return match_count <= target_count
+
+    return False
+
+
+def evaluate_substructure_criterion(mol, criterion):
+    pattern = criterion["pattern"]
+
+    match_count = count_substructure_matches(
+        mol,
+        pattern
+    )
+
+    condition_met = evaluate_count_condition(
+        match_count,
+        criterion["count_mode"],
+        criterion["count"]
+    )
+
+    if criterion["action"] == "include":
+        return condition_met
+
+    if criterion["action"] == "exclude":
+        return not condition_met
+
+    return False
+
 class SubstructureFilterWorker(QObject):
     progress = pyqtSignal(int)
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self, smiles_list, smarts_list, match_mode="all", exclude_pains=False,
-                 exclude_brenk=False, exclude_nih=False, exclude_chembl=False):
+    def __init__(
+        self,
+        smiles_list,
+        criteria,
+        match_mode="all",
+        exclude_pains=False,
+        exclude_brenk=False,
+        exclude_nih=False,
+        exclude_chembl=False
+    ):
         super().__init__()
+
         self.smiles_list = smiles_list
-        self.smarts_list = smarts_list
+        self.criteria = criteria
         self.match_mode = match_mode
+
         self.exclude_pains = exclude_pains
         self.exclude_brenk = exclude_brenk
         self.exclude_nih = exclude_nih
@@ -1755,12 +1819,35 @@ class SubstructureFilterWorker(QObject):
 
     def run(self):
         try:
-            patterns = [Chem.MolFromSmarts(s) for s in self.smarts_list]
-            if any(p is None for p in patterns):
-                self.error.emit("One or more substructure patterns failed to parse.")
-                return
-            combine = all if self.match_mode == "all" else any
+            compiled_criteria = []
+
+            for criterion in self.criteria:
+                pattern = Chem.MolFromSmarts(
+                    criterion["smarts"]
+                )
+                if pattern is None:
+                    self.error.emit(
+                        f"Failed to parse SMARTS for "
+                        f"{criterion['label']}."
+                    )
+                    return
+
+                compiled = criterion.copy()
+                compiled["pattern"] = pattern
+                compiled_criteria.append(compiled)
+
+            include_criteria = [
+                c for c in compiled_criteria
+                if c["action"] == "include"
+            ]
+
+            exclude_criteria = [
+                c for c in compiled_criteria
+                if c["action"] == "exclude"
+            ]
+
             catalogs = []
+
             if self.exclude_pains:
                 catalogs.append(_get_pains_catalog())
             if self.exclude_brenk:
@@ -1772,109 +1859,589 @@ class SubstructureFilterWorker(QObject):
 
             total = max(1, len(self.smiles_list))
             filtered = []
+
             for idx, smi in enumerate(self.smiles_list):
                 mol = Chem.MolFromSmiles(smi)
+
                 if mol is not None:
-                    passes_substructure = (not patterns) or combine(mol.HasSubstructMatch(p) for p in patterns)
-                    passes_catalogs = all(not cat.HasMatch(mol) for cat in catalogs)
-                    if passes_substructure and passes_catalogs:
+                    if include_criteria:
+                        include_results = [
+                            evaluate_substructure_criterion(
+                                mol,
+                                criterion
+                            )
+                            for criterion in include_criteria
+                        ]
+
+                        if self.match_mode == "all":
+                            passes_inclusion = all(include_results)
+                        else:
+                            passes_inclusion = any(include_results)
+
+                    else:
+                        passes_inclusion = True
+
+                    passes_exclusion = all(
+                        evaluate_substructure_criterion(
+                            mol,
+                            criterion
+                        )
+                        for criterion in exclude_criteria
+                    )
+
+                    passes_catalogs = all(
+                        not catalog.HasMatch(mol)
+                        for catalog in catalogs
+                    )
+
+                    if (
+                        passes_inclusion
+                        and passes_exclusion
+                        and passes_catalogs
+                    ):
                         filtered.append(smi)
+
                 if idx % max(1, total // 100) == 0:
-                    self.progress.emit(int(90 * idx / total))
+                    self.progress.emit(
+                        int(90 * idx / total)
+                    )
 
             self.progress.emit(100)
+
             self.finished.emit({
                 "filtered_smiles": DeDuplicate(filtered),
                 "before": len(self.smiles_list),
                 "after": len(filtered),
             })
+
         except Exception as exc:
-            self.error.emit(f"Substructure filtering failed: {exc}")
+            self.error.emit(
+                f"Substructure filtering failed: {exc}"
+            )
 
 class FilterByMoietyDialog(QDialog):
-    def __init__(self, parent=None, checked_labels=None, match_mode="all", exclude_pains=False,
-                 exclude_brenk=False, exclude_nih=False, exclude_chembl=False):
+
+    def __init__(
+        self,
+        parent=None,
+        existing_criteria=None,
+        match_mode="all",
+        exclude_pains=False,
+        exclude_brenk=False,
+        exclude_nih=False,
+        exclude_chembl=False
+    ):
         super().__init__(parent)
+
         self.setWindowTitle("Filter Library by Substructure")
-        self.resize(320, 360)
+        self.resize(800, 650)
 
-        self.selected_filters = []
+        self.criteria = []
         self.selected_labels = []
-        self.match_mode = match_mode 
+        self.match_mode = match_mode
 
-        checked_labels = checked_labels or set()
+        existing_criteria = existing_criteria or []
 
-        self.list_widget = QListWidget()
-        for label in sorted(substructure_dictionary):
-            item = QListWidgetItem(label)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked if label in checked_labels else Qt.CheckState.Unchecked)
-            self.list_widget.addItem(item)
+        previous = {
+            criterion["label"]: criterion
+            for criterion in existing_criteria
+            if not criterion.get("custom", False)
+        }
 
-        select_all_row = QHBoxLayout()
-        self.selectAllBtn = QPushButton("Select All")
-        self.selectAllBtn.clicked.connect(lambda: self._set_all(Qt.CheckState.Checked))
-        self.clearAllBtn = QPushButton("Clear All")
-        self.clearAllBtn.clicked.connect(lambda: self._set_all(Qt.CheckState.Unchecked))
-        select_all_row.addWidget(self.selectAllBtn)
-        select_all_row.addWidget(self.clearAllBtn)
+        existing_custom = [
+            criterion
+            for criterion in existing_criteria
+            if criterion.get("custom", False)
+        ]
 
-        self.matchAllRadio = QRadioButton("Match ALL checked fragments (AND)")
-        self.matchAnyRadio = QRadioButton("Match ANY checked fragment (OR)")
-        self.excludePainsCheckBox = QCheckBox("Also exclude PAINS-flagged compounds")
+        self.customSmartsEdit = QLineEdit()
+        self.customSmartsEdit.setPlaceholderText(
+            "Enter custom SMARTS, e.g. [Si](C)(C)C"
+        )
+
+        self.addCustomBtn = QPushButton("Add SMARTS")
+        self.removeCustomBtn = QPushButton("Remove Custom")
+
+        self.addCustomBtn.clicked.connect(self.add_custom_smarts)
+        self.removeCustomBtn.clicked.connect(self.remove_custom_smarts)
+
+        custom_layout = QHBoxLayout()
+        custom_layout.addWidget(QLabel("Custom SMARTS:"))
+        custom_layout.addWidget(self.customSmartsEdit, 1)
+        custom_layout.addWidget(self.addCustomBtn)
+        custom_layout.addWidget(self.removeCustomBtn)
+
+        self.customSmartsEdit.returnPressed.connect(
+            self.add_custom_smarts
+        )
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+
+        self.table.setHorizontalHeaderLabels([
+            "Substructure",
+            "Include",
+            "Exclude",
+            "Condition",
+            "Count"
+        ])
+
+        self.row_controls = {}
+
+        labels = sorted(substructure_dictionary)
+
+        self.table.setRowCount(0)
+
+        for label in labels:
+            criterion = previous.get(label)
+
+            self._add_table_row(
+                label=label,
+                smarts=substructure_dictionary[label],
+                criterion=criterion,
+                custom=False
+            )
+
+        for criterion in existing_custom:
+            self._add_table_row(
+                label=criterion["label"],
+                smarts=criterion["smarts"],
+                criterion=criterion,
+                custom=True
+            )
+
+        self.table.horizontalHeader().setStretchLastSection(False)
+
+        self.table.horizontalHeader().setSectionResizeMode(
+            0,
+            QHeaderView.ResizeMode.Stretch
+        )
+
+        self.table.resizeColumnToContents(1)
+        self.table.resizeColumnToContents(2)
+        self.table.resizeColumnToContents(3)
+        self.table.resizeColumnToContents(4)
+
+        clearBtn = QPushButton("Clear All")
+        clearBtn.clicked.connect(self.clear_all)
+
+        self.excludePainsCheckBox = QCheckBox(
+            "Also exclude PAINS-flagged compounds"
+        )
         self.excludePainsCheckBox.setChecked(exclude_pains)
-        self.excludeBrenkCheckBox = QCheckBox("Also exclude Brenk-flagged compounds")
+
+        self.excludeBrenkCheckBox = QCheckBox(
+            "Also exclude Brenk-flagged compounds"
+        )
         self.excludeBrenkCheckBox.setChecked(exclude_brenk)
-        self.excludeNihCheckBox = QCheckBox("Also exclude NIH-flagged compounds")
+
+        self.excludeNihCheckBox = QCheckBox(
+            "Also exclude NIH-flagged compounds"
+        )
         self.excludeNihCheckBox.setChecked(exclude_nih)
-        self.excludeChemblCheckBox = QCheckBox("Also exclude ChEMBL-curated alerts (Glaxo/Dundee/BMS/etc.)")
+
+        self.excludeChemblCheckBox = QCheckBox(
+            "Also exclude ChEMBL-curated alerts "
+            "(Glaxo/Dundee/BMS/etc.)"
+        )
         self.excludeChemblCheckBox.setChecked(exclude_chembl)
+
+        self.matchAllRadio = QRadioButton(
+            "Match ALL included substructures (AND)"
+        )
+
+        self.matchAnyRadio = QRadioButton(
+            "Match ANY included substructure (OR)"
+        )
+
         mode_group = QButtonGroup(self)
         mode_group.addButton(self.matchAllRadio)
         mode_group.addButton(self.matchAnyRadio)
+
         if match_mode == "any":
             self.matchAnyRadio.setChecked(True)
         else:
             self.matchAllRadio.setChecked(True)
-        mode_row = QVBoxLayout()
-        mode_row.addWidget(self.matchAllRadio)
-        mode_row.addWidget(self.matchAnyRadio)
 
         button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Save |
+            QDialogButtonBox.StandardButton.Cancel
         )
+
         button_box.accepted.connect(self.on_save)
         button_box.rejected.connect(self.reject)
 
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("Select fragments:"))
-        layout.addLayout(select_all_row)
-        layout.addWidget(self.list_widget)
+
+        layout.addWidget(
+            QLabel(
+                "Select predefined substructures or add custom SMARTS. "
+                "Each criterion can be included or excluded."
+            )
+        )
+
+        layout.addLayout(custom_layout)
+
+        layout.addWidget(self.table)
+        layout.addWidget(clearBtn)
+
         layout.addWidget(self.excludePainsCheckBox)
         layout.addWidget(self.excludeBrenkCheckBox)
         layout.addWidget(self.excludeNihCheckBox)
         layout.addWidget(self.excludeChemblCheckBox)
-        layout.addLayout(mode_row)
+
+        layout.addWidget(self.matchAllRadio)
+        layout.addWidget(self.matchAnyRadio)
+
         layout.addWidget(button_box)
+
         self.setLayout(layout)
 
-    def _set_all(self, state):
-        for i in range(self.list_widget.count()):
-            self.list_widget.item(i).setCheckState(state)
+    def _add_table_row(
+        self,
+        label,
+        smarts,
+        criterion=None,
+        custom=False
+    ):
+        
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+
+        label_item = QTableWidgetItem(label)
+
+        label_item.setFlags(
+            label_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+        )
+
+        label_item.setData(
+            Qt.ItemDataRole.UserRole,
+            {
+                "smarts": smarts,
+                "custom": custom
+            }
+        )
+
+        if custom:
+            label_item.setToolTip(
+                f"Custom SMARTS:\n{smarts}"
+            )
+        else:
+            label_item.setToolTip(smarts)
+
+        self.table.setItem(row, 0, label_item)
+
+        include_box = QCheckBox()
+        exclude_box = QCheckBox()
+
+        include_container = QWidget()
+        include_layout = QHBoxLayout(include_container)
+        include_layout.setContentsMargins(0, 0, 0, 0)
+        include_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        include_layout.addWidget(include_box)
+
+        exclude_container = QWidget()
+        exclude_layout = QHBoxLayout(exclude_container)
+        exclude_layout.setContentsMargins(0, 0, 0, 0)
+        exclude_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        exclude_layout.addWidget(exclude_box)
+
+        self.table.setCellWidget(
+            row,
+            1,
+            include_container
+        )
+
+        self.table.setCellWidget(
+            row,
+            2,
+            exclude_container
+        )
+
+        include_box.toggled.connect(
+            lambda checked, ex=exclude_box:
+                ex.setChecked(False)
+                if checked else None
+        )
+
+        exclude_box.toggled.connect(
+            lambda checked, inc=include_box:
+                inc.setChecked(False)
+                if checked else None
+        )
+
+        condition_combo = QComboBox()
+
+        condition_combo.addItems([
+            "Any",
+            "Exactly",
+            "At least",
+            "At most"
+        ])
+
+        count_spin = QSpinBox()
+        count_spin.setRange(1, 99)
+        count_spin.setValue(1)
+        count_spin.setEnabled(False)
+
+        self.table.setCellWidget(
+            row,
+            3,
+            condition_combo
+        )
+
+        self.table.setCellWidget(
+            row,
+            4,
+            count_spin
+        )
+
+        if (not custom and label in presence_only_substructures):
+            condition_combo.setCurrentText("Any")
+            condition_combo.setEnabled(False)
+            count_spin.setEnabled(False)
+
+            condition_combo.setToolTip(
+                "This query supports presence/absence only because "
+                "SMARTS match count does not correspond to ring count."
+            )
+
+            count_spin.setToolTip(
+                "Numerical counting is unavailable for this query."
+            )
+
+        else:
+            condition_combo.currentTextChanged.connect(
+                lambda text, spin=count_spin:
+                    spin.setEnabled(text != "Any")
+            )
+
+        if criterion is not None:
+
+            if criterion.get("action") == "include":
+                include_box.setChecked(True)
+
+            elif criterion.get("action") == "exclude":
+                exclude_box.setChecked(True)
+
+            mode_to_text = {
+                "any": "Any",
+                "exact": "Exactly",
+                "at_least": "At least",
+                "at_most": "At most"
+            }
+
+            if (not custom and label in presence_only_substructures):
+                condition_combo.setCurrentText("Any")
+                count_spin.setValue(1)
+
+            else:
+                condition_combo.setCurrentText(
+                    mode_to_text.get(
+                        criterion.get(
+                            "count_mode",
+                            "any"
+                        ),
+                        "Any"
+                    )
+                )
+
+                count_spin.setValue(
+                    criterion.get(
+                        "count",
+                        1
+                    )
+                )
+
+        self.row_controls[label] = {
+            "include": include_box,
+            "exclude": exclude_box,
+            "condition": condition_combo,
+            "count": count_spin,
+            "smarts": smarts,
+            "custom": custom
+        }
+
+    def add_custom_smarts(self):
+
+        smarts = self.customSmartsEdit.text().strip()
+
+        if not smarts:
+            QMessageBox.information(
+                self,
+                "Custom SMARTS",
+                "Enter a SMARTS pattern first."
+            )
+            return
+
+        pattern = Chem.MolFromSmarts(smarts)
+
+        if pattern is None:
+            QMessageBox.warning(
+                self,
+                "Invalid SMARTS",
+                "RDKit could not parse this SMARTS pattern:\n\n"
+                f"{smarts}"
+            )
+            return
+
+        for controls in self.row_controls.values():
+            if (
+                controls.get("custom", False)
+                and controls.get("smarts") == smarts
+            ):
+                QMessageBox.information(
+                    self,
+                    "SMARTS already added",
+                    "This custom SMARTS pattern is already present."
+                )
+                return
+
+        label = f"Custom: {smarts}"
+
+        base_label = label
+        suffix = 2
+
+        while label in self.row_controls:
+            label = f"{base_label} ({suffix})"
+            suffix += 1
+
+        self._add_table_row(
+            label=label,
+            smarts=smarts,
+            criterion=None,
+            custom=True
+        )
+
+        self.row_controls[label]["include"].setChecked(True)
+        self.customSmartsEdit.clear()
+        self.table.scrollToBottom()
+
+    def remove_custom_smarts(self):
+
+        row = self.table.currentRow()
+
+        if row < 0:
+            QMessageBox.information(
+                self,
+                "Remove Custom SMARTS",
+                "Select a custom SMARTS row first."
+            )
+            return
+
+        item = self.table.item(row, 0)
+
+        if item is None:
+            return
+
+        metadata = item.data(
+            Qt.ItemDataRole.UserRole
+        ) or {}
+
+        if not metadata.get("custom", False):
+            QMessageBox.information(
+                self,
+                "Remove Custom SMARTS",
+                "Predefined MOLDE substructures cannot be removed."
+            )
+            return
+
+        label = item.text()
+
+        self.row_controls.pop(
+            label,
+            None
+        )
+
+        self.table.removeRow(row)
+
+    def clear_all(self):
+
+        for controls in self.row_controls.values():
+
+            controls["include"].setChecked(False)
+            controls["exclude"].setChecked(False)
+
+            controls["condition"].setCurrentText(
+                "Any"
+            )
+
+            controls["count"].setValue(1)
 
     def on_save(self):
-        checked_items = [
-            self.list_widget.item(i)
-            for i in range(self.list_widget.count())
-            if self.list_widget.item(i).checkState() == Qt.CheckState.Checked
-        ]
-        self.selected_filters = [substructure_dictionary[item.text()] for item in checked_items]
-        self.selected_labels = [item.text() for item in checked_items]
-        self.match_mode = "any" if self.matchAnyRadio.isChecked() else "all"
-        self.exclude_pains = self.excludePainsCheckBox.isChecked()
-        self.exclude_brenk = self.excludeBrenkCheckBox.isChecked()
-        self.exclude_nih = self.excludeNihCheckBox.isChecked()
-        self.exclude_chembl = self.excludeChemblCheckBox.isChecked()
+
+        self.criteria = []
+        self.selected_labels = []
+
+        text_to_mode = {
+            "Any": "any",
+            "Exactly": "exact",
+            "At least": "at_least",
+            "At most": "at_most"
+        }
+
+        for row in range(
+            self.table.rowCount()
+        ):
+
+            item = self.table.item(
+                row,
+                0
+            )
+
+            if item is None:
+                continue
+
+            label = item.text()
+
+            controls = self.row_controls.get(
+                label
+            )
+
+            if controls is None:
+                continue
+
+            if controls["include"].isChecked():
+                action = "include"
+
+            elif controls["exclude"].isChecked():
+                action = "exclude"
+
+            else:
+                continue
+
+            count_mode = text_to_mode[
+                controls["condition"].currentText()
+            ]
+
+            criterion = {
+                "label": label,
+                "smarts": controls["smarts"],
+                "action": action,
+                "count_mode": count_mode,
+                "count": controls["count"].value(),
+                "custom": controls["custom"]
+            }
+
+            self.criteria.append(
+                criterion
+            )
+
+            self.selected_labels.append(
+                label
+            )
+
+        self.match_mode = (
+            "any"
+            if self.matchAnyRadio.isChecked()
+            else "all"
+        )
+
+        self.exclude_pains = (self.excludePainsCheckBox.isChecked())
+        self.exclude_brenk = (self.excludeBrenkCheckBox.isChecked())
+        self.exclude_nih = (self.excludeNihCheckBox.isChecked())
+        self.exclude_chembl = (self.excludeChemblCheckBox.isChecked())
+
         self.accept()
 
 class FiltrationWindow(QWidget):
@@ -2352,48 +2919,94 @@ class ChemicalSpaceWorker(QObject):
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self, library_smiles, ref_smiles, lib_name, ref_name):
+    def __init__(
+        self,
+        library_smiles,
+        ref_smiles,
+        lib_name,
+        ref_name,
+        sampled_indices=None
+    ):
         super().__init__()
+
         self.library_smiles = library_smiles
         self.ref_smiles = ref_smiles
         self.lib_name = lib_name
         self.ref_name = ref_name
+        self.sampled_indices = (
+            sampled_indices if sampled_indices is not None else []
+        )
 
     def run(self):
         try:
             if not self.library_smiles:
                 self.error.emit("No library is loaded to plot.")
                 return
-            lib_X, _lib_valid = _fingerprint_matrix(self.library_smiles)
+            
+            lib_X, lib_valid = _fingerprint_matrix(self.library_smiles)
+
             self.progress.emit(35)
+
             if lib_X.shape[0] < 2:
-                self.error.emit("Need at least 2 valid library structures to plot chemical space.")
+                self.error.emit(
+                    "Need at least 2 valid library structures "
+                    "to plot chemical space."
+                )
                 return
 
+            sampled_index_set = set(self.sampled_indices)
+
+            sampled_pca_rows = [
+                pca_row
+                for pca_row, original_index in enumerate(lib_valid)
+                if original_index in sampled_index_set
+            ]
+
             ref_X = None
+
             if self.ref_smiles:
                 ref_X, _ref_valid = _fingerprint_matrix(self.ref_smiles)
+
                 if ref_X.shape[0] == 0:
-                    ref_X = None 
+                    ref_X = None
+
             self.progress.emit(60)
 
-            combined = np.vstack([lib_X, ref_X]) if ref_X is not None and ref_X.shape[0] else lib_X
+            combined = (
+                np.vstack([lib_X, ref_X])
+                if ref_X is not None and ref_X.shape[0]
+                else lib_X
+            )
+
             coords, explained = _pca_2d(combined)
             self.progress.emit(90)
-
             lib_coords = coords[:lib_X.shape[0]]
-            ref_coords = coords[lib_X.shape[0]:] if ref_X is not None and ref_X.shape[0] else None
+            ref_coords = (
+                coords[lib_X.shape[0]:]
+                if ref_X is not None and ref_X.shape[0]
+                else None
+            )
+
+            sampled_coords = (
+                lib_coords[sampled_pca_rows]
+                if sampled_pca_rows
+                else None
+            )
 
             self.progress.emit(100)
             self.finished.emit({
                 "lib_coords": lib_coords,
                 "ref_coords": ref_coords,
+                "sampled_coords": sampled_coords,
                 "explained": explained,
                 "lib_name": self.lib_name,
                 "ref_name": self.ref_name,
             })
+
         except Exception as exc:
-            self.error.emit(f"Chemical-space calculation failed: {exc}")
+            self.error.emit(
+                f"Chemical-space calculation failed: {exc}"
+            )
 
 def _load_known_aggregators() -> list:
     if not os.path.isfile(_KNOWN_AGGREGATORS_PATH):
@@ -2504,39 +3117,97 @@ class AggregationResultsDialog(QDialog):
 
 class ChemicalSpaceDialog(QDialog):
 
-    def __init__(self, parent, lib_coords, ref_coords, explained, lib_name, ref_name):
+    def __init__(
+        self,
+        parent,
+        lib_coords,
+        ref_coords,
+        sampled_coords,
+        explained,
+        lib_name,
+        ref_name
+    ):
         super().__init__(parent)
+
         self.setWindowTitle("Chemical Space (PCA)")
-        self.resize(700, 700)
+        self.resize(700, 760)
+
         self.lib_coords = lib_coords
         self.ref_coords = ref_coords
+        self.sampled_coords = sampled_coords
         self.explained = explained
+
         layout = QVBoxLayout(self)
 
         self.figure = Figure(figsize=(6, 5))
         self.canvas = FigureCanvas(self.figure)
         layout.addWidget(self.canvas)
 
+        has_sample = (
+            sampled_coords is not None
+            and len(sampled_coords) > 0
+        )
+
+        sampleGroupBox = QGroupBox("Diversity Sample Display")
+        sampleLayout = QFormLayout(sampleGroupBox)
+
+        self.sampleDisplayCombo = QComboBox()
+        self.sampleDisplayCombo.addItems([
+            "Overlay on full library",
+            "Sample only"
+        ])
+        self.sampleDisplayCombo.setEnabled(has_sample)
+        self.sampleDisplayCombo.currentIndexChanged.connect(self._redraw)
+
+        if not has_sample:
+            self.sampleDisplayCombo.setToolTip(
+                "Run diversity sampling first to enable these options."
+            )
+
+        sampleLayout.addRow("Display:", self.sampleDisplayCombo)
+        layout.addWidget(sampleGroupBox)
+
         customGroupBox = QGroupBox("Customize Labels")
         customLayout = QFormLayout(customGroupBox)
-        self.titleBox = QLineEdit("Chemical Space - PCA on Morgan Fingerprints")
-        self.xLabelBox = QLineEdit(f"PC1 ({explained[0] * 100:.1f}% variance)")
-        self.yLabelBox = QLineEdit(f"PC2 ({explained[1] * 100:.1f}% variance)")
+
+        self.titleBox = QLineEdit(
+            "Chemical Space - PCA on Morgan Fingerprints"
+        )
+
+        self.xLabelBox = QLineEdit(
+            f"PC1 ({explained[0] * 100:.1f}% variance)"
+        )
+
+        self.yLabelBox = QLineEdit(
+            f"PC2 ({explained[1] * 100:.1f}% variance)"
+        )
+
         self.libLabelBox = QLineEdit(lib_name)
         self.refLabelBox = QLineEdit(ref_name or "Reference")
-        self.refLabelBox.setEnabled(ref_coords is not None and len(ref_coords) > 0)
+        self.sampleLabelBox = QLineEdit("Diversity Sample")
+
+        self.refLabelBox.setEnabled(
+            ref_coords is not None and len(ref_coords) > 0
+        )
+
+        self.sampleLabelBox.setEnabled(has_sample)
+
         customLayout.addRow("Plot title:", self.titleBox)
         customLayout.addRow("X-axis label:", self.xLabelBox)
         customLayout.addRow("Y-axis label:", self.yLabelBox)
         customLayout.addRow("Library legend label:", self.libLabelBox)
         customLayout.addRow("Reference legend label:", self.refLabelBox)
+        customLayout.addRow("Sample legend label:", self.sampleLabelBox)
+
         applyBtn = QPushButton("Apply Labels")
         applyBtn.setCursor(Qt.CursorShape.PointingHandCursor)
         applyBtn.clicked.connect(self._redraw)
         customLayout.addRow(applyBtn)
+
         layout.addWidget(customGroupBox)
 
         btnRow = QHBoxLayout()
+
         saveBtn = QPushButton("Save as PNG")
         saveBtn.setCursor(Qt.CursorShape.PointingHandCursor)
         saveBtn.clicked.connect(self.savePlot)
@@ -2545,6 +3216,7 @@ class ChemicalSpaceDialog(QDialog):
         closeBtn = QPushButton("Close")
         closeBtn.clicked.connect(self.close)
         btnRow.addWidget(closeBtn)
+
         layout.addLayout(btnRow)
 
         self._redraw()
@@ -2552,52 +3224,196 @@ class ChemicalSpaceDialog(QDialog):
     def _redraw(self):
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-        has_ref = self.ref_coords is not None and len(self.ref_coords) > 0
-        lib_kwargs = dict(s=18, alpha=0.6, label=self.libLabelBox.text() or "Library",
-                          color="#4E5659", marker="o")
-        ref_kwargs = dict(s=32, alpha=0.85, label=self.refLabelBox.text() or "Reference",
-                          color="#2E86AB", marker="o")
-        if has_ref and len(self.ref_coords) < len(self.lib_coords):
-            ax.scatter(self.lib_coords[:, 0], self.lib_coords[:, 1], zorder=1, **lib_kwargs)
-            ax.scatter(self.ref_coords[:, 0], self.ref_coords[:, 1], zorder=2, **ref_kwargs)
+
+        has_ref = (
+            self.ref_coords is not None
+            and len(self.ref_coords) > 0
+        )
+
+        has_sample = (
+            self.sampled_coords is not None
+            and len(self.sampled_coords) > 0
+        )
+
+        sample_only = (
+            has_sample
+            and self.sampleDisplayCombo.currentText() == "Sample only"
+        )
+
+        lib_kwargs = dict(
+            s=18,
+            alpha=0.6,
+            label=self.libLabelBox.text() or "Library",
+            color="#4E5659",
+            marker="o"
+        )
+
+        ref_kwargs = dict(
+            s=32,
+            alpha=0.85,
+            label=self.refLabelBox.text() or "Reference",
+            color="#2E86AB",
+            marker="o"
+        )
+
+        sample_kwargs = dict(
+            s=25,
+            alpha=0.75,
+            label=self.sampleLabelBox.text() or "Diversity Sample",
+            color="#46B47F",
+            marker="o",
+            edgecolors="black",
+            linewidths=0.4
+        )
+
+        if not sample_only:
+            if has_ref and len(self.ref_coords) < len(self.lib_coords):
+                ax.scatter(
+                    self.lib_coords[:, 0],
+                    self.lib_coords[:, 1],
+                    zorder=1,
+                    **lib_kwargs
+                )
+
+                ax.scatter(
+                    self.ref_coords[:, 0],
+                    self.ref_coords[:, 1],
+                    zorder=2,
+                    **ref_kwargs
+                )
+
+            elif has_ref:
+                ax.scatter(
+                    self.ref_coords[:, 0],
+                    self.ref_coords[:, 1],
+                    zorder=1,
+                    **ref_kwargs
+                )
+
+                ax.scatter(
+                    self.lib_coords[:, 0],
+                    self.lib_coords[:, 1],
+                    zorder=2,
+                    **lib_kwargs
+                )
+
+            else:
+                ax.scatter(
+                    self.lib_coords[:, 0],
+                    self.lib_coords[:, 1],
+                    zorder=1,
+                    **lib_kwargs
+                )
+
         elif has_ref:
-            ax.scatter(self.ref_coords[:, 0], self.ref_coords[:, 1], zorder=1, **ref_kwargs)
-            ax.scatter(self.lib_coords[:, 0], self.lib_coords[:, 1], zorder=2, **lib_kwargs)
-        else:
-            ax.scatter(self.lib_coords[:, 0], self.lib_coords[:, 1], zorder=1, **lib_kwargs)
+            ax.scatter(
+                self.ref_coords[:, 0],
+                self.ref_coords[:, 1],
+                zorder=1,
+                **ref_kwargs
+            )
+
+        if has_sample:
+            ax.scatter(
+                self.sampled_coords[:, 0],
+                self.sampled_coords[:, 1],
+                zorder=3,
+                **sample_kwargs
+            )
+
         ax.set_xlabel(self.xLabelBox.text())
         ax.set_ylabel(self.yLabelBox.text())
         ax.set_title(self.titleBox.text())
         ax.legend()
+
         self.figure.tight_layout()
         self.canvas.draw()
 
     def savePlot(self):
         global workingDirectory
+
         path, _selected_filter = QFileDialog.getSaveFileName(
             parent=self,
             caption="Save chemical space plot",
-            directory=os.path.join(workingDirectory, "chemical_space.png") if workingDirectory else "chemical_space.png",
+            directory=os.path.join(
+                workingDirectory,
+                "chemical_space.png"
+            ) if workingDirectory else "chemical_space.png",
             filter="PNG Image (*.png)"
         )
+
         if not path:
             return
+
         if not path.lower().endswith(".png"):
             path += ".png"
+
         try:
-            self.figure.savefig(path, dpi=300, bbox_inches="tight")
+            self.figure.savefig(
+                path,
+                dpi=300,
+                bbox_inches="tight"
+            )
+
             workingDirectory = os.path.dirname(path)
+
         except Exception as exc:
-            QMessageBox.critical(self, "Save failed", f"Could not save plot: {exc}")
+            QMessageBox.critical(
+                self,
+                "Save failed",
+                f"Could not save plot: {exc}"
+            )
+
+class DiversitySamplingDialog(QDialog):
+
+    def __init__(self, maximum_sample_size, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Diversity sampling")
+        self.export_requested = False
+
+        self.sampleSpinBox = QSpinBox()
+        self.sampleSpinBox.setMinimum(1)
+        self.sampleSpinBox.setMaximum(maximum_sample_size)
+        self.sampleSpinBox.setValue(
+            min(100, maximum_sample_size)
+        )
+        label = QLabel("Number of molecules to sample:")
+        layout = QVBoxLayout()
+        layout.addWidget(label)
+        layout.addWidget(self.sampleSpinBox)
+
+        self.cancelBtn = QPushButton("Cancel")
+        self.cancelBtn.clicked.connect(self.reject)
+        self.sampleBtn = QPushButton("Sample")
+        self.sampleBtn.clicked.connect(self.accept)
+        self.sampleExportBtn = QPushButton("Sample && Export")
+        self.sampleExportBtn.clicked.connect(self.sample_and_export)
+        buttonLayout = QHBoxLayout()
+        buttonLayout.addWidget(self.cancelBtn)
+        buttonLayout.addWidget(self.sampleBtn)
+        buttonLayout.addWidget(self.sampleExportBtn)
+        layout.addLayout(buttonLayout)
+        self.setLayout(layout)
+
+    def sample_and_export(self):
+        self.export_requested = True
+        self.accept()
+
+
 
 class SimilarityWindow(QWidget):
 
-    def __init__(self, parent=None, df=None):
+    def __init__(self, parent=None, df=None, log_callback=None, export_callback=None):
         super().__init__(parent)
         self.df = _ensure_descriptor_columns(df.copy()) if df is not None else pd.DataFrame(columns=["SMILES"])
         self.scored_df = None  
         self.filtered_df = None
         self.ref_smiles = []   
+        self.sampled_smiles = []
+        self.sampled_og_indices = []
+        self.log_callback = log_callback
+        self.export_callback = export_callback
         self.ref_name = ""     
         self._thread = None
         self._worker = None
@@ -2635,6 +3451,10 @@ class SimilarityWindow(QWidget):
         self.calcBtn.clicked.connect(self.start_calculation)
         self.calcBtn.setDisabled(True)   
         layout.addWidget(self.calcBtn)
+
+        self.samplingBtn = QPushButton("Diversity Sampling")
+        self.samplingBtn.clicked.connect(self.start_diversity_sampling)
+        layout.addWidget(self.samplingBtn)
 
         self.plotSpaceBtn = QPushButton("Plot Chemical Space")
         self.plotSpaceBtn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -2845,6 +3665,33 @@ class SimilarityWindow(QWidget):
         self.viewResultsBtn.setEnabled(True)
         self.filterResultLabel.setText("")
 
+    def start_diversity_sampling(self):
+        if len(baseSMILES) == 0:
+            QMessageBox.information(self, "Empty Library", "Library is empty. Can not proceed")
+            return
+        
+        dialog = DiversitySamplingDialog(
+            len(baseSMILES),
+            parent=self
+        )
+
+        result = dialog.exec()
+        if result == QDialog.DialogCode.Accepted:
+            number = dialog.sampleSpinBox.value()
+            self.sampled_smiles = []
+            self.sampled_og_indices = _maxmin_sample(baseSMILES, number)
+            
+            for sel_index in self.sampled_og_indices:
+                self.sampled_smiles.append(baseSMILES[sel_index])
+            if self.log_callback is not None:
+                self.log_callback(f"Diversity sampling: selected {len(self.sampled_smiles)} of {len(baseSMILES)} molecules (MaxMin sampling; Morgan radius=2; seed=42).")
+            if dialog.export_requested:
+                if self.export_callback is not None:
+                    self.export_callback(
+                        self.sampled_smiles, 
+                        ask_for_directory=True
+                    )
+
     def start_plot_chemical_space(self):
         if self.df is None or self.df.empty:
             QMessageBox.information(self, "No library", "There is no library loaded to plot.")
@@ -2869,6 +3716,7 @@ class SimilarityWindow(QWidget):
             ref_smiles=list(self.ref_smiles),   
             lib_name=(name if name else "Current Library"),
             ref_name=self.ref_name,
+            sampled_indices=self.sampled_og_indices
         )
         self._plot_worker.moveToThread(self._plot_thread)
 
@@ -2894,14 +3742,17 @@ class SimilarityWindow(QWidget):
     def _on_plot_finished(self, payload: dict):
         self._refresh_action_buttons()
         self.progressBar.setVisible(False)
+
         dialog = ChemicalSpaceDialog(
             parent=self,
             lib_coords=payload["lib_coords"],
             ref_coords=payload.get("ref_coords"),
+            sampled_coords=payload.get("sampled_coords"),
             explained=payload["explained"],
             lib_name=payload.get("lib_name", "Current Library"),
             ref_name=payload.get("ref_name"),
         )
+
         dialog.exec()
 
     def start_aggregation_screen(self):
@@ -3094,6 +3945,7 @@ class Main(QWidget):
         QApplication.instance().aboutToQuit.connect(self.cleanupBeforeQuit)
 
         self.active_filter_labels = set()
+        self.active_substructure_criteria = []
         self.second = None
         self.third = None 
         self._exportThread = None
@@ -3232,26 +4084,75 @@ class Main(QWidget):
     def on_filter_substr_clicked(self):
         dialog = FilterByMoietyDialog(
             self,
-            checked_labels=self.active_filter_labels,
-            match_mode=getattr(self, "active_match_mode", "all"),
-            exclude_pains=getattr(self, "active_exclude_pains", False),
-            exclude_brenk=getattr(self, "active_exclude_brenk", False),
-            exclude_nih=getattr(self, "active_exclude_nih", False),
-            exclude_chembl=getattr(self, "active_exclude_chembl", False),
+            existing_criteria=getattr(
+                self,
+                "active_substructure_criteria",
+                []
+            ),
+            match_mode=getattr(
+                self,
+                "active_match_mode",
+                "all"
+            ),
+            exclude_pains=getattr(
+                self,
+                "active_exclude_pains",
+                False
+            ),
+            exclude_brenk=getattr(
+                self,
+                "active_exclude_brenk",
+                False
+            ),
+            exclude_nih=getattr(
+                self,
+                "active_exclude_nih",
+                False
+            ),
+            exclude_chembl=getattr(
+                self,
+                "active_exclude_chembl",
+                False
+            ),
         )
+
         if dialog.exec() == QDialog.DialogCode.Accepted:
+
+            if (
+                not dialog.criteria
+                and not dialog.exclude_pains
+                and not dialog.exclude_brenk
+                and not dialog.exclude_nih
+                and not dialog.exclude_chembl
+            ):
+                QMessageBox.information(
+                    self,
+                    "No filters selected",
+                    "No substructure or structural-alert filters were selected."
+                )
+                return
+
+            self.active_substructure_criteria = dialog.criteria
             self.active_filter_labels = set(dialog.selected_labels)
+
             self.active_match_mode = dialog.match_mode
             self.active_exclude_pains = dialog.exclude_pains
             self.active_exclude_brenk = dialog.exclude_brenk
             self.active_exclude_nih = dialog.exclude_nih
             self.active_exclude_chembl = dialog.exclude_chembl
-            self.apply_filters(dialog.selected_filters, dialog.match_mode, dialog.exclude_pains,
-                                dialog.exclude_brenk, dialog.exclude_nih, dialog.exclude_chembl)
 
-    def apply_filters(self, smarts_list, match_mode="all",
-                      exclude_pains=False, exclude_brenk=False,
-                      exclude_nih=False, exclude_chembl=False
+            self.apply_filters(
+                dialog.criteria,
+                dialog.match_mode,
+                dialog.exclude_pains,
+                dialog.exclude_brenk,
+                dialog.exclude_nih,
+                dialog.exclude_chembl
+            )
+
+    def apply_filters(self, criteria, match_mode="all",
+                    exclude_pains=False, exclude_brenk=False,
+                    exclude_nih=False, exclude_chembl=False
     ):
 
         if self._substr_thread is not None:
@@ -3284,13 +4185,60 @@ class Main(QWidget):
         self.substrFilterProgressBar.setValue(0)
         self.substrFilterProgressBar.setVisible(True)
 
-        selected = sorted(self.active_filter_labels)
         filter_parts = []
 
-        if selected:
+        include_criteria = [
+            c for c in criteria
+            if c["action"] == "include"
+        ]
+
+        exclude_criteria = [
+            c for c in criteria
+            if c["action"] == "exclude"
+        ]
+
+        count_symbols = {
+            "any": "",
+            "exact": "=",
+            "at_least": "≥",
+            "at_most": "≤"
+        }
+
+
+        def describe_criterion(criterion):
+            mode = criterion["count_mode"]
+
+            if mode == "any":
+                return criterion["label"]
+
+            symbol = count_symbols[mode]
+
+            return (
+                f"{criterion['label']} "
+                f"{symbol} {criterion['count']}"
+            )
+
+
+        if include_criteria:
             mode = "ALL" if match_mode == "all" else "ANY"
+
+            descriptions = [
+                describe_criterion(c)
+                for c in include_criteria
+            ]
+
             filter_parts.append(
-                f"{mode} selected substructures: {', '.join(selected)}"
+                f"include {mode}: {', '.join(descriptions)}"
+            )
+
+
+        if exclude_criteria:
+            descriptions = [
+                describe_criterion(c)
+                for c in exclude_criteria
+            ]
+            filter_parts.append(
+                f"exclude: {', '.join(descriptions)}"
             )
 
         if exclude_pains:
@@ -3314,7 +4262,7 @@ class Main(QWidget):
         self._substr_thread = QThread()
         self._substr_worker = SubstructureFilterWorker(
             smiles_snapshot,
-            smarts_list,
+            criteria,
             match_mode,
             exclude_pains,
             exclude_brenk,
@@ -3543,7 +4491,7 @@ class Main(QWidget):
                 QMessageBox.critical(self, "Build failed", f"{type(e).__name__}: {e}")
                 return
         if self.third is None or not self.third.isVisible():
-            self.third = SimilarityWindow(parent=None, df=self.library_df)
+            self.third = SimilarityWindow(parent=None, df=self.library_df, log_callback=self.log_message, export_callback=self.exportProducts)
             self.third.setWindowFlag(Qt.WindowType.Window, True)
             self.third.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
             self.third.destroyed.connect(lambda: setattr(self, "third", None))
@@ -4286,11 +5234,26 @@ class Main(QWidget):
         self.refreshFiltrationAvailability()
         rxn_products = []
 
-    def exportProducts(self):
+    def exportProducts(self, specified_export_list=None, ask_for_directory=False):
         global exportPath
         global name
 
-        if not exportPath or not os.path.isdir(exportPath):
+        current_export_path = exportPath
+        if ask_for_directory:
+            current_export_path = QFileDialog.getExistingDirectory(
+                directory=workingDirectory,
+                caption='Select the export directory.',
+                options=QFileDialog.Option.DontUseNativeDialog
+                )
+            if not current_export_path:
+                return
+
+        if specified_export_list is not None and isinstance(specified_export_list, list):
+            export_list = specified_export_list
+        else:
+            export_list = baseSMILES
+
+        if not current_export_path or not os.path.isdir(current_export_path):
             QMessageBox.critical(
                 self,
                 "No export directory",
@@ -4316,12 +5279,12 @@ class Main(QWidget):
             if (getattr(self, "library_df", None) is not None and not self.library_df.empty and "SMILES" in self.library_df.columns):
                 descriptor_df = _ensure_descriptor_columns(self.library_df.copy())
             else:
-                descriptor_df = _ensure_descriptor_columns(pd.DataFrame({"SMILES": baseSMILES}))
+                descriptor_df = _ensure_descriptor_columns(pd.DataFrame({"SMILES": export_list}))
 
             descriptor_lookup = (descriptor_df.drop_duplicates(subset="SMILES", keep="first").set_index("SMILES"))
 
         self.log_message(
-            f"Export started: {len(baseSMILES):,} molecule(s), "
+            f"Export started: {len(export_list):,} molecule(s), "
             f"{export_type}."
         )
 
@@ -4332,9 +5295,9 @@ class Main(QWidget):
         self._exportThread = QThread()
 
         self._exportWorker = ExportWorker(
-            smiles_list=list(baseSMILES),
+            smiles_list=list(export_list),
             descriptor_lookup=descriptor_lookup,
-            export_path=exportPath,
+            export_path=current_export_path,
             file_name=name,
             file_type=export_type,
             include_properties=include_properties
@@ -4484,6 +5447,52 @@ def _fingerprint_matrix(smiles_list: list, batch_size: int = 2000) -> "tuple[np.
     rows = [item[1] for item in collected]
 
     return (np.vstack(rows), valid_indices)
+
+def _maxmin_sample(smiles_list, n_to_select):
+    from rdkit.SimDivFilters.rdSimDivPickers import MaxMinPicker
+
+    fps = []
+    valid_indices = []
+    selected_indices = []
+    picker = MaxMinPicker()
+
+    for index, smi in enumerate(smiles_list):
+        mol = _smiles_to_mol(smi)
+        if mol is None:
+            continue
+
+        fp = _morgan_fp(mol)
+        if fp is None:
+            continue
+        
+        fps.append(fp)
+        valid_indices.append(index)
+
+    if len(fps) == 0:
+        print("No valid molecules. Diversity sampling can not be continued") # Should be in the log, not a simple "print"
+        return []
+    elif n_to_select <= 0:
+        print("Invalid size of the sample. Diversity sampling can not be continued")
+        return []
+    elif n_to_select >= len(valid_indices):
+        return valid_indices
+
+
+    selected_fp_indices = list(
+        picker.LazyBitVectorPick(
+                fps,
+                len(fps),
+                n_to_select,
+                seed=42
+            )
+    )
+
+    for fp_index in selected_fp_indices:
+        og_index = valid_indices[fp_index]
+        selected_indices.append(og_index)
+
+    return selected_indices
+
 
 def _pca_2d(X: "np.ndarray"):
     if X.shape[0] < 2:
